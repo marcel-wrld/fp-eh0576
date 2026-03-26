@@ -151,11 +151,10 @@ upscale_img (guchar *src_img, guchar *dst_img)
 }
 
 /*
- * As it is already known, libfprint absolutely sucks at processing small images.
+ * As it is already known, libfprint has trouble processing very small images.
  * Therefore the 'trick' is to create a canvas that is big enough to be liked by libfprint,
  * fill it with 255 (white background) and put an upscaled version of the sensor image into the
  * center of that canvas.
- * With this technique I have managed to get scores as high as 32!
  */
 static void
 upscale_and_pad_img (guchar *img, guchar *canvas)
