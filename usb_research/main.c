@@ -65,7 +65,7 @@ int verify_image()
           printf("Saved raw image.\n");
         }
 
-        upscale2x_bilinear_img(img, img_upscaled);
+        upscale_2x(img, img_upscaled);
 
         printf("Saving upscaled image to file...\n");
         FILE *fp_upscaled = fopen("output_upscaled.bin", "wb");

@@ -60,45 +60,16 @@ void normalize_img(unsigned char *bg, unsigned char *img, double *dark_portion)
   *dark_portion = (double)count_ridges / IMG_SIZE;
 }
 
-void upscale2x_bilinear_img(unsigned char *src_img, unsigned char *dst_img)
+void upscale_2x(unsigned char *src_img, unsigned char *dst_img)
 {
   for (int y = 0; y < IMG_HEIGHT_2X; y++)
   {
     int src_y = y / 2;
-    int src_y_next = (src_y + 1 < IMG_HEIGHT) ? src_y + 1 : src_y;
 
     for (int x = 0; x < IMG_WIDTH_2X; x++)
     {
       int src_x = x / 2;
-      int src_x_next = (src_x + 1 < IMG_WIDTH) ? src_x + 1 : src_x;
-
-      int p00 = src_img[src_y * IMG_WIDTH + src_x];
-      int p10 = src_img[src_y * IMG_WIDTH + src_x_next];
-      int p01 = src_img[src_y_next * IMG_WIDTH + src_x];
-      int p11 = src_img[src_y_next * IMG_WIDTH + src_x_next];
-
-      int final_val;
-
-      int x_mod_2 = x % 2;
-      int y_mod_2 = y / 2;
-      if (x_mod_2 == 0 && y_mod_2 == 0)
-      {
-        final_val = p00;
-      }
-      else if (x_mod_2 != 0 && y_mod_2 == 0)
-      {
-        final_val = (p00 + p10) / 2;
-      }
-      else if (x_mod_2 == 0 && y_mod_2 != 0)
-      {
-        final_val = (p00 + p01) / 2;
-      }
-      else
-      {
-        final_val = (p00 + p10 + p01 + p11) / 4;
-      }
-
-      dst_img[y * (IMG_WIDTH_2X) + x] = (unsigned char)final_val;
+      dst_img[y * IMG_WIDTH_2X + x] = src_img[src_y * IMG_WIDTH + src_x];
     }
   }
 }

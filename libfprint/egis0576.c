@@ -17,23 +17,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "fp-device.h"
-#include "fp-image-device.h"
-#include "fp-image.h"
-#include "fp-print.h"
-#include "fpi-device.h"
-#include "fpi-image-device.h"
-#include "fpi-image.h"
-#include "fpi-log.h"
-#include "fpi-ssm.h"
-#include "glib.h"
-#include "glibconfig.h"
-#include <stdio.h>
-#include <string.h>
 #define FP_COMPONENT "egis0576"
 
-#include "drivers_api.h"
 #include "egis0576.h"
+#include "drivers_api.h"
 
 /* Sequence types */
 typedef enum { SEQ_INIT, SEQ_REPEAT, SEQ_POLL, SEQ_IMAGE } seq_types;
@@ -98,9 +85,9 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion) {
   for (int i = 0; i < EGIS0576_IMG_SIZE; i++) {
     int normalized = 255 - (((diff[i] - min) * 255) / range);
 
-    if (normalized < 5)
+    if (normalized < 0)
       normalized = 0;
-    else if (normalized > 250)
+    else if (normalized > 255)
       normalized = 255;
 
     img[i] = (unsigned char)normalized;
@@ -111,35 +98,14 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion) {
   *dark_portion = (double)count_ridges / EGIS0576_IMG_SIZE;
 }
 
-static void upscale2x_bilinear_img(guchar *src_img, guchar *dst_img) {
+static void upscale2x(guchar *src_img, guchar *dst_img) {
   for (int y = 0; y < EGIS0576_IMG_HEIGHT_2X; y++) {
     int src_y = y / 2;
-    int src_y_next = (src_y + 1 < EGIS0576_IMG_HEIGHT) ? src_y + 1 : src_y;
 
     for (int x = 0; x < EGIS0576_IMG_WIDTH_2X; x++) {
       int src_x = x / 2;
-      int src_x_next = (src_x + 1 < EGIS0576_IMG_WIDTH) ? src_x + 1 : src_x;
-
-      int p00 = src_img[src_y * EGIS0576_IMG_WIDTH + src_x];
-      int p10 = src_img[src_y * EGIS0576_IMG_WIDTH + src_x_next];
-      int p01 = src_img[src_y_next * EGIS0576_IMG_WIDTH + src_x];
-      int p11 = src_img[src_y_next * EGIS0576_IMG_WIDTH + src_x_next];
-
-      int final_val;
-
-      int x_mod_2 = x % 2;
-      int y_mod_2 = y / 2;
-      if (x_mod_2 == 0 && y_mod_2 == 0) {
-        final_val = p00;
-      } else if (x_mod_2 != 0 && y_mod_2 == 0) {
-        final_val = (p00 + p10) / 2;
-      } else if (x_mod_2 == 0 && y_mod_2 != 0) {
-        final_val = (p00 + p01) / 2;
-      } else {
-        final_val = (p00 + p10 + p01 + p11) / 4;
-      }
-
-      dst_img[y * (EGIS0576_IMG_WIDTH_2X) + x] = (guchar)final_val;
+      dst_img[y * EGIS0576_IMG_WIDTH_2X + x] =
+          src_img[src_y * EGIS0576_IMG_WIDTH + src_x];
     }
   }
 }
@@ -188,15 +154,15 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer) {
   }
 
   FpImage *fpImg = fp_image_new(EGIS0576_IMG_WIDTH_2X, EGIS0576_IMG_HEIGHT_2X);
-  // fpImg->flags = FPI_IMAGE_COLORS_INVERTED;
 
   /* Sensor returns full image */
   // memcpy(fpImg->data, img, EGIS0576_IMG_SIZE);
 
-  upscale2x_bilinear_img(img, fpImg->data);
+  upscale2x(img, fpImg->data);
 
   fpi_image_device_report_finger_status(img_self, TRUE);
   fpi_image_device_image_captured(img_self, fpImg);
+
   fpi_ssm_next_state_delayed(transfer->ssm, 50);
 }
 
@@ -382,7 +348,6 @@ static void send_cmd(FpiSsm *ssm, FpDevice *dev) {
 
 static void ssm_run_state(FpiSsm *ssm, FpDevice *dev) {
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
-  FpImageDevice *img_dev = FP_IMAGE_DEVICE(dev);
 
   switch (fpi_ssm_get_cur_state(ssm)) {
   case DEV_OPEN:
@@ -394,11 +359,11 @@ static void ssm_run_state(FpiSsm *ssm, FpDevice *dev) {
     if (self->stop) {
       fp_dbg("Deactivating device, marking completed.");
       fpi_ssm_mark_completed(ssm);
-      fpi_image_device_deactivate_complete(img_dev, NULL);
-    } else {
-      self->seq_pkt_index = 0;
-      fpi_ssm_jump_to_state(ssm, DEV_REQ);
+      return;
     }
+
+    self->seq_pkt_index = 0;
+    fpi_ssm_jump_to_state(ssm, DEV_REQ);
     break;
 
   case DEV_REQ:
@@ -430,8 +395,13 @@ static void sm_cb(FpiSsm *ssm, FpDevice *dev, GError *error) {
 
   self->running = FALSE;
 
-  if (error)
+  if (error && !self->stop)
     fpi_image_device_session_error(img_dev, error);
+  else if (error)
+    g_error_free(error);
+
+  if (self->stop)
+    fpi_image_device_deactivate_complete(img_dev, NULL);
 }
 
 /*

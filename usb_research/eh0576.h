@@ -83,7 +83,7 @@ double get_sd_dev_sq(unsigned char *img);
 
 void normalize_img(unsigned char *bg, unsigned char *img, double *dark_portion);
 
-void upscale2x_bilinear_img(unsigned char *src_img, unsigned char *dst_img);
+void upscale_2x(unsigned char *src_img, unsigned char *dst_img);
 
 static const Pkt EGIS0576_POLL_PACKET
   = { .len = 7,
