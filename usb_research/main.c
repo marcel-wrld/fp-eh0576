@@ -1,14 +1,13 @@
-#include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <libusb-1.0/libusb.h>
 
 #include "eh0576.h"
 
-#define TEST_FRAMES 4
-
-int img_len = 0;
+bool have_bg = false;
+unsigned char bg[8192] = { 0 };
 unsigned char img[8192] = { 0 };
 
 int __status;
@@ -23,6 +22,7 @@ int save_image()
   }
 
   Pkt pkt = EGIS0576_IMAGE_PACKET;
+  int img_len;
   if (send_egis_pkt(pkt, img, &img_len) != LIBUSB_SUCCESS)
   {
     printf("Request to save image failed.\n");
@@ -35,33 +35,89 @@ int save_image()
 int verify_image()
 {
   uint sum = 0;
-  uint count_dark = 0;
-  for (int i = 0; i < img_len; i++)
+  for (int i = 0; i < IMG_SIZE; i++)
   {
-    uint b = (uint)img[i];
-    sum += b;
-    if (b < IMGP_DARK)
-      count_dark++;
+    sum += (uint)img[i];
   }
 
   // No data was present
   if (sum == 0)
     return -1;
 
-  int mean = sum / img_len;
+  int mean = sum / IMG_SIZE;
   double sd = 0;
-  for (int i = 0; i < img_len; i++)
+  for (int i = 0; i < IMG_SIZE; i++)
   {
     int diff = (uint)img[i] - mean;
     sd += diff * diff;
   }
 
-  double sd_dev = sqrt(sd / img_len);
-  double dark_portion = (double)count_dark / img_len;
-  bool finger_present = sd_dev > IMGP_SD_DEV && dark_portion > IMGP_DARK_PORTION;
+  double sd_dev_sq = sd / IMG_SIZE;
+  if (!have_bg)
+  {
+    if (sd_dev_sq < IMGP_BG_SD_DEV * IMGP_BG_SD_DEV)
+    {
+      memcpy(bg, img, IMG_SIZE);
+      have_bg = true;
+      printf("Calibrated! Please put your finger on the sensor...\n");
+    }
+  }
+  else
+  {
+    if (sd_dev_sq > IMGP_SD_DEV * IMGP_SD_DEV)
+    {
+      int diff[IMG_SIZE];
+      int min = 255;
+      int max = 0;
 
-  printf(">> IMAGE: %d\n", finger_present);
-  return LIBUSB_SUCCESS;
+      for (int i = 0; i < IMG_SIZE; i++)
+      {
+        diff[i] = (int)bg[i] - (int)img[i];
+        if (diff[i] < min)
+          min = diff[i];
+        if (diff[i] > max)
+          max = diff[i];
+      }
+
+      int range = max - min;
+      if (range == 0)
+        range = 1;
+
+      int count_ridges = 0;
+      for (int i = 0; i < IMG_SIZE; i++)
+      {
+        int normalized = ((diff[i] - min) * 255) / range;
+
+        if (normalized < 0)
+          normalized = 0;
+        else if (normalized > 255)
+          normalized = 255;
+
+        img[i] = (unsigned char)normalized;
+        if (img[i] < 150)
+          count_ridges++;
+      }
+
+      double dark_portion = (double)count_ridges / IMG_SIZE;
+      bool finger_present = dark_portion > IMGP_DARK_PORTION;
+      printf(">> IMAGE: %d (%.2f)\n", finger_present, dark_portion);
+
+      if (finger_present)
+      {
+        printf("Saving image to file...\n");
+        FILE *fp = fopen("output.bin", "wb");
+        if (fp)
+        {
+          fwrite(img, sizeof(unsigned char), IMG_SIZE, fp);
+          printf("Saved.\n");
+        }
+
+        return LIBUSB_SUCCESS;
+      }
+    }
+  }
+
+  return 1;
 }
 
 int main()
@@ -72,25 +128,21 @@ int main()
   if ((__status = init_sequence()) != LIBUSB_SUCCESS)
     goto CLEANUP;
 
-  int verified_images = 0;
-  for (int i = 0; i < TEST_FRAMES; i++)
+  printf("Please lift your finger until instructed otherwise. Calibrating...\n");
+
+  int i = 0;
+  while (true)
   {
-    if (i != 0 && (__status = repeat_sequence()) != LIBUSB_SUCCESS)
+    if (i++ != 0 && (__status = repeat_sequence()) != LIBUSB_SUCCESS)
       goto CLEANUP;
 
     if ((__status = save_image()) != LIBUSB_SUCCESS)
       goto CLEANUP;
 
-    if (verify_image() == LIBUSB_SUCCESS)
-    {
-      verified_images++;
-    }
-  }
+    if ((__status = verify_image()) == LIBUSB_SUCCESS)
+      break;
 
-  if (verified_images == 0)
-  {
-    printf("Could not verify any images.\n");
-    __status = -1;
+    usleep(50000);
   }
 
 CLEANUP:

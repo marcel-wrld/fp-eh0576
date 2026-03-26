@@ -16,9 +16,9 @@
 #define IMG_HEIGHT 57
 #define IMG_SIZE   ((IMG_WIDTH) * (IMG_HEIGHT))
 // This values were acquired by testing with finger present and without finger present
-#define IMGP_DARK         110   // Less than 110 is considered dark
-#define IMGP_SD_DEV       3     // 1. finger present? Standard dev. > this value
+#define IMGP_SD_DEV       3.5   // 1. finger present? Standard dev. > this value
 #define IMGP_DARK_PORTION 0.05  // 2. finger present? Portion of dark pixels > this value
+#define IMGP_BG_SD_DEV    2.75  // Variance considered background
 
 // All packets work like this:
 // E     G     I     S
@@ -78,7 +78,7 @@ int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *
 static const Pkt EGIS0576_POLL_PACKET
   = { .len = 7,
       .cmd = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x60, 0x00, 0x00 },
-      .res_len = 7 };
+      .res_len = 9 };
 
 static const Pkt EGIS0576_IMAGE_PACKET
   = { .len = 7,
