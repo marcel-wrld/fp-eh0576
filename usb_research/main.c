@@ -1,9 +1,12 @@
+#include <math.h>
 #include <stdio.h>
 #include <unistd.h>
 
 #include <libusb-1.0/libusb.h>
 
 #include "eh0576.h"
+
+#define TEST_FRAMES 4
 
 int img_len = 0;
 unsigned char img[8192] = { 0 };
@@ -31,19 +34,34 @@ int save_image()
 
 int verify_image()
 {
-  uint total = 0;
+  uint sum = 0;
+  uint count_dark = 0;
   for (int i = 0; i < img_len; i++)
   {
-    total += (uint)img[i];
+    uint b = (uint)img[i];
+    sum += b;
+    if (b < IMGP_DARK)
+      count_dark++;
   }
 
-  if (total != 0)
+  // No data was present
+  if (sum == 0)
+    return -1;
+
+  int mean = sum / img_len;
+  double sd = 0;
+  for (int i = 0; i < img_len; i++)
   {
-    printf(">> IMAGE: %d\n", total);
-    return LIBUSB_SUCCESS;
+    int diff = (uint)img[i] - mean;
+    sd += diff * diff;
   }
 
-  return -1;
+  double sd_dev = sqrt(sd / img_len);
+  double dark_portion = (double)count_dark / img_len;
+  bool finger_present = sd_dev > IMGP_SD_DEV && dark_portion > IMGP_DARK_PORTION;
+
+  printf(">> IMAGE: %d\n", finger_present);
+  return LIBUSB_SUCCESS;
 }
 
 int main()
@@ -55,7 +73,7 @@ int main()
     goto CLEANUP;
 
   int verified_images = 0;
-  for (int i = 0; i < EGIS0576_CONSECUTIVE_CAPTURES; i++)
+  for (int i = 0; i < TEST_FRAMES; i++)
   {
     if (i != 0 && (__status = repeat_sequence()) != LIBUSB_SUCCESS)
       goto CLEANUP;

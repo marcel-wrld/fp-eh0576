@@ -7,7 +7,7 @@
 
 libusb_context *ctx = NULL;
 libusb_device_handle *h = NULL;
-struct libusb_device *dev = NULL;
+bool claimed_interface = false;
 
 int rcvd = 0;
 unsigned char resp_buf[8192] = { 0 };
@@ -24,19 +24,23 @@ int open_egis0576()
     return -1;
   }
 
-  dev = libusb_get_device(h);
+  if (libusb_claim_interface(h, IID) != LIBUSB_SUCCESS)
+  {
+    printf("Could not claim interface.\n");
+    return -1;
+  }
 
-  // Mimick windows setup
-  // if (perform_setup() != LIBUSB_SUCCESS)
-  // {
-  //   return -1;
-  // }
-
+  claimed_interface = true;
   return LIBUSB_SUCCESS;
 }
 
 void close_egis0576()
 {
+  if (claimed_interface)
+  {
+    libusb_release_interface(h, IID);
+  }
+
   if (h)
   {
     libusb_close(h);
@@ -46,55 +50,6 @@ void close_egis0576()
   {
     libusb_exit(ctx);
   }
-}
-
-int perform_setup()
-{
-  struct libusb_device_descriptor desc_dev;
-
-  // GET DESCRIPTOR Request DEVICE
-  int res = libusb_get_device_descriptor(dev, &desc_dev);
-  if (res != LIBUSB_SUCCESS)
-  {
-    printf("Could not get descriptor for device: %s\n", libusb_error_name(res));
-    return -1;
-  }
-
-  // printf("Received device descriptor.\n");
-
-  // GET DESCRIPTOR Request CONFIGURATION
-  struct libusb_config_descriptor *desc_conf;
-  res = libusb_get_config_descriptor(dev, 0, &desc_conf);
-  if (res != LIBUSB_SUCCESS)
-  {
-    printf("Could not get descriptor for config: %s\n", libusb_error_name(res));
-    return -1;
-  }
-
-  // printf("Received config descriptor.\n");
-  libusb_free_config_descriptor(desc_conf);
-
-  // GET DESCRIPTOR Request STRING (SerialNumber)
-  unsigned char setup_desc_serialno[255];
-  int serialno_len
-    = libusb_get_string_descriptor_ascii(h, desc_dev.iSerialNumber, setup_desc_serialno, 255);
-  if (serialno_len <= LIBUSB_SUCCESS)
-  {
-    printf("Could not get serial number: %s\n", libusb_error_name(res));
-    return -1;
-  }
-
-  // printf("Received serial number.\n");
-  // print_data(setup_desc_serialno, serialno_len);
-
-  res = libusb_set_configuration(h, 1);
-  if (res != LIBUSB_SUCCESS)
-  {
-    printf("Could not set config: %s\n", libusb_error_name(res));
-    return -1;
-  }
-
-  return LIBUSB_SUCCESS;
 }
 
 int init_sequence()
@@ -116,7 +71,7 @@ int init_sequence()
 int poll_device_ready()
 {
   Pkt pkt = EGIS0576_POLL_PACKET;
-  for (int i = 0; i < 3000; i++)
+  for (int i = 0; i < POLL_COUNT; i++)
   {
     if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
     {

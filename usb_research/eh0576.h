@@ -5,18 +5,20 @@
 #include <libusb-1.0/libusb.h>
 
 // Device values
-#define VID     0x1c7a
-#define PID     0x0576
-#define IID     0
-#define TIMEOUT 10000
+#define VID        0x1c7a
+#define PID        0x0576
+#define IID        0
+#define TIMEOUT    10000
+#define POLL_COUNT 3000  // Based on Ghidra
 
 // Image values
 #define IMG_WIDTH  70
 #define IMG_HEIGHT 57
 #define IMG_SIZE   ((IMG_WIDTH) * (IMG_HEIGHT))
-
-// Idk how many EH0576 does, since its a touch sensor it could be less
-#define EGIS0576_CONSECUTIVE_CAPTURES 8
+// This values were acquired by testing with finger present and without finger present
+#define IMGP_DARK         110   // Less than 110 is considered dark
+#define IMGP_SD_DEV       3     // 1. finger present? Standard dev. > this value
+#define IMGP_DARK_PORTION 0.05  // 2. finger present? Portion of dark pixels > this value
 
 // All packets work like this:
 // E     G     I     S
