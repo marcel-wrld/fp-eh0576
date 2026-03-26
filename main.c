@@ -5,77 +5,22 @@
 
 #include "eh0576.h"
 
-int rcvd = 0;
-unsigned char resp[8192] = { 0 };
+int img_len = 0;
 unsigned char img[8192] = { 0 };
 
-int pre_init_sequence()
-{
-  // printf("Sending PRE_INIT sequence.\n");
-  for (int i = 0; i < EGIS0576_PRE_INIT_PACKETS_LENGTH; i++)
-  {
-    Pkt pkt = EGIS0576_PRE_INIT_PACKETS[i];
-    if (send_egis_pkt(pkt.payload, pkt.len, resp, pkt.res_len, &rcvd) != LIBUSB_SUCCESS)
-    {
-      printf("PRE_INIT failed at pkt index: %d.\n", i);
-      return -1;
-    }
-  }
-
-  return post_init_sequence(true);
-}
-
-int post_init_sequence(bool from_pre_init)
-{
-  // printf("Sending POST_INIT sequence.\n");
-  for (int i = 0; i < EGIS0576_POST_INIT_PACKETS_LENGTH; i++)
-  {
-    Pkt pkt = EGIS0576_POST_INIT_PACKETS[i];
-    if (send_egis_pkt(pkt.payload, pkt.len, resp, pkt.res_len, &rcvd) != LIBUSB_SUCCESS)
-    {
-      printf("POST_INIT failed at pkt index: %d.\n", i);
-      return -1;
-    }
-
-    if (i == 1 && resp[5] == 0x01)
-    {
-      printf("WARNING: PRE_INIT sequence is required.\n");
-
-      if (from_pre_init)
-      {
-        printf("Cannot call PRE_INIT sequence because it was called already.\n");
-        return -1;
-      }
-
-      return pre_init_sequence();
-    }
-  }
-
-  return LIBUSB_SUCCESS;
-}
-
-int repeat_sequence()
-{
-  // printf("Sending REPEAT sequence.\n");
-  for (int i = 0; i < EGIS0576_REPEAT_PACKETS_LENGTH; i++)
-  {
-    Pkt pkt = EGIS0576_REPEAT_PACKETS[i];
-    if (send_egis_pkt(pkt.payload, pkt.len, resp, pkt.res_len, &rcvd) != LIBUSB_SUCCESS)
-    {
-      printf("REPEAT failed at pkt index: %d.\n", i);
-      return -1;
-    }
-  }
-
-  return LIBUSB_SUCCESS;
-}
+int __status;
 
 int save_image()
 {
   // printf("Sending IMAGE request.\n");
 
-  unsigned char img_cmd[] = { 0x45, 0x47, 0x49, 0x53, 0x64, 0x0f, 0x96 };
-  if (send_egis_pkt_t(img_cmd, 7, img, 8192, &rcvd, 190000) != LIBUSB_SUCCESS)
+  if (poll_device_ready() != LIBUSB_SUCCESS)
+  {
+    return -1;
+  }
+
+  Pkt pkt = EGIS0576_REQUEST_IMAGE_PACKET;
+  if (send_egis_pkt(pkt, img, &img_len) != LIBUSB_SUCCESS)
   {
     printf("Request to save image failed.\n");
     return -1;
@@ -87,14 +32,14 @@ int save_image()
 int verify_image()
 {
   uint total = 0;
-  for (int i = 0; i < rcvd; i++)
+  for (int i = 0; i < img_len; i++)
   {
     total += (uint)img[i];
   }
 
   if (total != 0)
   {
-    printf("We have got the image! (%d)\n", total);
+    printf(">> IMAGE: %d\n", total);
     return LIBUSB_SUCCESS;
   }
 
@@ -103,33 +48,20 @@ int verify_image()
 
 int main()
 {
-  if (open_and_handshake() != LIBUSB_SUCCESS)
-  {
-    return -1;
-  }
+  if ((__status = open_egis0576()) != LIBUSB_SUCCESS)
+    goto CLEANUP;
 
-  if (pre_init_sequence() != LIBUSB_SUCCESS)
-  {
-    dispose();
-    return -1;
-  }
-
-  usleep(190000);
+  if ((__status = pre_init_sequence()) != LIBUSB_SUCCESS)
+    goto CLEANUP;
 
   int verified_images = 0;
-  for (int i = 0; i < EGIS0575_CONSECUTIVE_CAPTURES; i++)
+  for (int i = 0; i < EGIS0576_CONSECUTIVE_CAPTURES; i++)
   {
-    if (i != 0 && repeat_sequence() != LIBUSB_SUCCESS)
-    {
-      dispose();
-      return -1;
-    }
+    if (i != 0 && (__status = repeat_sequence()) != LIBUSB_SUCCESS)
+      goto CLEANUP;
 
-    if (save_image() != LIBUSB_SUCCESS)
-    {
-      dispose();
-      return -1;
-    }
+    if ((__status = save_image()) != LIBUSB_SUCCESS)
+      goto CLEANUP;
 
     if (verify_image() == LIBUSB_SUCCESS)
     {
@@ -140,10 +72,20 @@ int main()
   if (verified_images == 0)
   {
     printf("Could not verify any images.\n");
-    return -1;
+    __status = -1;
   }
 
-  printf("Exiting.\n");
-  dispose();
-  return 1;
+CLEANUP:
+  if (__status != LIBUSB_SUCCESS)
+  {
+    __status = -1;
+  }
+  else
+  {
+    printf("Exiting.\n");
+    __status = 1;
+  }
+
+  close_egis0576();
+  return __status;
 }

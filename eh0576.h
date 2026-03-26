@@ -11,7 +11,7 @@
 #define IMG_WIDTH                     70
 #define IMG_HEIGHT                    57
 #define IMG_SIZE                      ((IMG_WIDTH) * (IMG_HEIGHT))
-#define EGIS0575_CONSECUTIVE_CAPTURES 8
+#define EGIS0576_CONSECUTIVE_CAPTURES 8
 
 typedef struct
 {
@@ -20,25 +20,26 @@ typedef struct
   int res_len;
 } Pkt;
 
-int open_and_handshake();
+int open_egis0576();
 
-void dispose();
-
-void print_data(unsigned char *data, int size);
+void close_egis0576();
 
 int perform_setup();
-
-int perform_handshake();
-
-int send_egis_pkt(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
-                  const int resp_len, int *rcvd);
-
-int send_egis_pkt_t(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
-                    const int resp_len, int *rcvd, int delay);
 
 int pre_init_sequence();
 
 int post_init_sequence(bool from_pre_init);
+
+int poll_device_ready();
+
+int repeat_sequence();
+
+int send_egis_pkt(Pkt pkt, unsigned char *resp_buf, int *rcvd);
+
+int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
+                      const int resp_len, int *rcvd);
+
+void print_data(unsigned char *data, int size);
 
 #define EGIS0576_PRE_INIT_PACKETS_LENGTH 29
 static const Pkt EGIS0576_PRE_INIT_PACKETS[] = {
@@ -134,7 +135,7 @@ static const Pkt EGIS0576_PRE_INIT_PACKETS[] = {
     .res_len = 7 },
 };
 
-#define EGIS0576_POST_INIT_PACKETS_LENGTH 17
+#define EGIS0576_POST_INIT_PACKETS_LENGTH 16
 static const Pkt EGIS0576_POST_INIT_PACKETS[] = {
   { .len = 7,
     .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x60, 0x00, 0x00 },
@@ -186,12 +187,9 @@ static const Pkt EGIS0576_POST_INIT_PACKETS[] = {
   { .len = 9,
     .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x63, 0x2c, 0x02, 0x00, 0x13 },
     .res_len = 9 },  // correct: FUN_180009230
-  { .len = 7,
-    .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x60, 0x00, 0x00 },
-    .res_len = 7 },  // correct: FUN_180009230
 };
 
-#define EGIS0576_REPEAT_PACKETS_LENGTH 9
+#define EGIS0576_REPEAT_PACKETS_LENGTH 8
 static const Pkt EGIS0576_REPEAT_PACKETS[] = {
   { .len = 7,
     .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x61, 0x2d, 0x20 },
@@ -217,7 +215,14 @@ static const Pkt EGIS0576_REPEAT_PACKETS[] = {
   { .len = 9,
     .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x63, 0x2c, 0x02, 0x00, 0x13 },
     .res_len = 9 },  // correct: FUN_180009230
-  { .len = 7,
-    .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x60, 0x00, 0x00 },
-    .res_len = 7 },  // correct: FUN_180009230
 };
+
+static const Pkt EGIS0576_POLL_PACKET
+  = { .len = 7,
+      .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x60, 0x00, 0x00 },
+      .res_len = 7 };
+
+static const Pkt EGIS0576_REQUEST_IMAGE_PACKET
+  = { .len = 7,
+      .payload = (unsigned char[]){ 0x45, 0x47, 0x49, 0x53, 0x64, 0x0f, 0x96 },
+      .res_len = 3990 };

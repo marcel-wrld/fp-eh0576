@@ -9,7 +9,10 @@ libusb_context *ctx = NULL;
 libusb_device_handle *h = NULL;
 struct libusb_device *dev = NULL;
 
-int open_and_handshake()
+int rcvd = 0;
+unsigned char resp_buf[8192] = { 0 };
+
+int open_egis0576()
 {
   libusb_init(&ctx);
 
@@ -18,30 +21,21 @@ int open_and_handshake()
   if (!h)
   {
     printf("Could not open device.\n");
-    dispose();
     return -1;
   }
 
   dev = libusb_get_device(h);
 
   // Mimick windows setup
-  if (perform_setup() != LIBUSB_SUCCESS)
-  {
-    dispose();
-    return -1;
-  }
-
-  // Do proprietary handshake
-  if (perform_handshake() != LIBUSB_SUCCESS)
-  {
-    dispose();
-    return -1;
-  }
+  // if (perform_setup() != LIBUSB_SUCCESS)
+  // {
+  //   return -1;
+  // }
 
   return LIBUSB_SUCCESS;
 }
 
-void dispose()
+void close_egis0576()
 {
   if (h)
   {
@@ -52,21 +46,6 @@ void dispose()
   {
     libusb_exit(ctx);
   }
-}
-
-void print_data(unsigned char *data, int size)
-{
-  for (int i = 0; i < size; i++)
-  {
-    printf("%X", data[i]);
-  }
-
-  printf(" '");
-  for (int i = 0; i < size; i++)
-  {
-    printf("%c", data[i]);
-  }
-  printf("'\n");
 }
 
 int perform_setup()
@@ -118,34 +97,95 @@ int perform_setup()
   return LIBUSB_SUCCESS;
 }
 
-int perform_handshake()
+int pre_init_sequence()
 {
-  unsigned char handshake_1[16];
-  int res = libusb_control_transfer(h, 0xc0, 4, 0x0000, 0x0004, handshake_1, 16, TIMEOUT);
-  if (res < LIBUSB_SUCCESS)
+  // printf("Sending PRE_INIT sequence.\n");
+  for (int i = 0; i < EGIS0576_PRE_INIT_PACKETS_LENGTH; i++)
   {
-    printf("Could not execute FIRST handshake: %s\n", libusb_error_name(res));
-    return -1;
+    Pkt pkt = EGIS0576_PRE_INIT_PACKETS[i];
+    if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
+    {
+      printf("PRE_INIT failed at pkt index: %d.\n", i);
+      return -1;
+    }
   }
 
-  // printf("Received response from FIRST handshake.\n");
+  return post_init_sequence(true);
+}
 
-  unsigned char handshake_2[40];
-  res = libusb_control_transfer(h, 0xc0, 4, 0x0000, 0x0004, handshake_2, 40, TIMEOUT);
-  if (res < LIBUSB_SUCCESS)
+int post_init_sequence(bool from_pre_init)
+{
+  // printf("Sending POST_INIT sequence.\n");
+  for (int i = 0; i < EGIS0576_POST_INIT_PACKETS_LENGTH; i++)
   {
-    printf("Could not execute SECOND handshake: %s\n", libusb_error_name(res));
-    return -1;
+    Pkt pkt = EGIS0576_POST_INIT_PACKETS[i];
+    if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
+    {
+      printf("POST_INIT failed at pkt index: %d.\n", i);
+      return -1;
+    }
+
+    if (i == 1 && resp_buf[5] == 0x01)
+    {
+      printf("WARNING: PRE_INIT sequence is required.\n");
+
+      if (from_pre_init)
+      {
+        printf("Cannot call PRE_INIT sequence because it was called already.\n");
+        return -1;
+      }
+
+      return pre_init_sequence();
+    }
   }
 
-  // printf("Received response from SECOND handshake.\n");
-
-  // printf("Handshake completed.\n");
   return LIBUSB_SUCCESS;
 }
 
-int send_egis_pkt(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
-                  const int resp_len, int *rcvd)
+int poll_device_ready()
+{
+  Pkt pkt = EGIS0576_POLL_PACKET;
+  for (int i = 0; i < 3000; i++)
+  {
+    if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
+    {
+      printf("POLL failed at index: %d.\n", i);
+      return -1;
+    }
+
+    if ((resp_buf[6] & 0x01) == 0x01)
+    {
+      // printf("Data poll completed!\n");
+      return LIBUSB_SUCCESS;
+    }
+  }
+
+  return -1;
+}
+
+int repeat_sequence()
+{
+  // printf("Sending REPEAT sequence.\n");
+  for (int i = 0; i < EGIS0576_REPEAT_PACKETS_LENGTH; i++)
+  {
+    Pkt pkt = EGIS0576_REPEAT_PACKETS[i];
+    if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
+    {
+      printf("REPEAT failed at pkt index: %d.\n", i);
+      return -1;
+    }
+  }
+
+  return LIBUSB_SUCCESS;
+}
+
+int send_egis_pkt(Pkt pkt, unsigned char *resp_buf, int *rcvd)
+{
+  return send_egis_pkt_raw(pkt.payload, pkt.len, resp_buf, pkt.res_len, rcvd);
+}
+
+int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
+                      const int resp_len, int *rcvd)
 {
   int sent = 0;
   *rcvd = 0;
@@ -167,27 +207,17 @@ int send_egis_pkt(unsigned char *seg_buf, const int seg_len, unsigned char *resp
   return LIBUSB_SUCCESS;
 }
 
-int send_egis_pkt_t(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
-                    const int resp_len, int *rcvd, int delay)
+void print_data(unsigned char *data, int size)
 {
-  int sent = 0;
-  *rcvd = 0;
-
-  int r = libusb_bulk_transfer(h, 0x01, seg_buf, seg_len, &sent, TIMEOUT);
-  if (r != LIBUSB_SUCCESS)
+  for (int i = 0; i < size; i++)
   {
-    printf("Could not sent data: %s\n", libusb_error_name(r));
-    return -1;
+    printf("%X", data[i]);
   }
 
-  usleep(delay);
-
-  r = libusb_bulk_transfer(h, 0x82, resp_buf, resp_len, rcvd, TIMEOUT);
-  if (r != LIBUSB_SUCCESS)
+  printf(" '");
+  for (int i = 0; i < size; i++)
   {
-    printf("Could not receive data: %s\n", libusb_error_name(r));
-    return -1;
+    printf("%c", data[i]);
   }
-
-  return LIBUSB_SUCCESS;
+  printf("'\n");
 }
