@@ -51,7 +51,7 @@ int main()
   if ((__status = open_egis0576()) != LIBUSB_SUCCESS)
     goto CLEANUP;
 
-  if ((__status = pre_init_sequence()) != LIBUSB_SUCCESS)
+  if ((__status = post_init_sequence(false)) != LIBUSB_SUCCESS)
     goto CLEANUP;
 
   int verified_images = 0;
