@@ -19,7 +19,7 @@ int save_image()
     return -1;
   }
 
-  Pkt pkt = EGIS0576_REQUEST_IMAGE_PACKET;
+  Pkt pkt = EGIS0576_IMAGE_PACKET;
   if (send_egis_pkt(pkt, img, &img_len) != LIBUSB_SUCCESS)
   {
     printf("Request to save image failed.\n");
@@ -51,7 +51,7 @@ int main()
   if ((__status = open_egis0576()) != LIBUSB_SUCCESS)
     goto CLEANUP;
 
-  if ((__status = post_init_sequence(false)) != LIBUSB_SUCCESS)
+  if ((__status = init_sequence()) != LIBUSB_SUCCESS)
     goto CLEANUP;
 
   int verified_images = 0;

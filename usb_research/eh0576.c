@@ -97,45 +97,16 @@ int perform_setup()
   return LIBUSB_SUCCESS;
 }
 
-int pre_init_sequence()
+int init_sequence()
 {
-  // printf("Sending PRE_INIT sequence.\n");
-  for (int i = 0; i < EGIS0576_PRE_INIT_PACKETS_LENGTH; i++)
+  // printf("Sending INIT sequence.\n");
+  for (int i = 0; i < EGIS0576_INIT_PACKETS_LENGTH; i++)
   {
-    Pkt pkt = EGIS0576_PRE_INIT_PACKETS[i];
+    Pkt pkt = EGIS0576_INIT_PACKETS[i];
     if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
     {
-      printf("PRE_INIT failed at pkt index: %d.\n", i);
+      printf("INIT failed at pkt index: %d.\n", i);
       return -1;
-    }
-  }
-
-  return post_init_sequence(true);
-}
-
-int post_init_sequence(bool from_pre_init)
-{
-  // printf("Sending POST_INIT sequence.\n");
-  for (int i = 0; i < EGIS0576_POST_INIT_PACKETS_LENGTH; i++)
-  {
-    Pkt pkt = EGIS0576_POST_INIT_PACKETS[i];
-    if (send_egis_pkt(pkt, resp_buf, &rcvd) != LIBUSB_SUCCESS)
-    {
-      printf("POST_INIT failed at pkt index: %d.\n", i);
-      return -1;
-    }
-
-    if (i == 1 && resp_buf[5] == 0x01)
-    {
-      printf("WARNING: PRE_INIT sequence is required.\n");
-
-      if (from_pre_init)
-      {
-        printf("Cannot call PRE_INIT sequence because it was called already.\n");
-        return -1;
-      }
-
-      return pre_init_sequence();
     }
   }
 
@@ -181,7 +152,7 @@ int repeat_sequence()
 
 int send_egis_pkt(Pkt pkt, unsigned char *resp_buf, int *rcvd)
 {
-  return send_egis_pkt_raw(pkt.payload, pkt.len, resp_buf, pkt.res_len, rcvd);
+  return send_egis_pkt_raw(pkt.cmd, pkt.len, resp_buf, pkt.res_len, rcvd);
 }
 
 int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
@@ -205,19 +176,4 @@ int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *
   }
 
   return LIBUSB_SUCCESS;
-}
-
-void print_data(unsigned char *data, int size)
-{
-  for (int i = 0; i < size; i++)
-  {
-    printf("%X", data[i]);
-  }
-
-  printf(" '");
-  for (int i = 0; i < size; i++)
-  {
-    printf("%c", data[i]);
-  }
-  printf("'\n");
 }
