@@ -3,7 +3,7 @@
 After installing Linux on my [IdeaPad Flex 5 14ALC7 Laptop](https://pcsupport.lenovo.com/de/en/products/laptops-and-netbooks/flex-series/flex-5-14alc7/) the fingerprint reader did not work anymore because there was no driver for the **EH0576** (`1c7a:0576`) fingerprint reader.
 
 ### WIP
-Currently the verification example of `libfprint` always returns a **0 match score** against a before-hand enrolled fingerprint. I have yet to figure out why...
+Currently the `libfprint` driver still has a high rejection rate as it often detects a match score of **0**. The highest match score I was able to achieve was 12 while the average match score, if any is detected, is around 3. I have yet to figure out how to improve it.
 
 ## Thank You
 

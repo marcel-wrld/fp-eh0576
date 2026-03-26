@@ -79,13 +79,15 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion)
   int max = 0;
   for (int i = 0; i < EGIS0576_IMG_SIZE; i++)
   {
-    diff[i] = (int)img[i] - (int)bg[i];
+    diff[i] = (int)bg[i] - (int)img[i];
     if (diff[i] < min)
       min = diff[i];
     if (diff[i] > max)
       max = diff[i];
   }
 
+  max -= EGIS0576_CONTRAST;
+  min += EGIS0576_CONTRAST;
   int range = max - min;
   if (range == 0)
     range = 1;  // Prevent division by zero
@@ -94,7 +96,7 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion)
   int count_ridges = 0;
   for (int i = 0; i < EGIS0576_IMG_SIZE; i++)
   {
-    int normalized = 255 - (((diff[i] - min) * 255) / range);
+    int normalized = ((diff[i] - min) * 255) / range;
 
     if (normalized < 0)
       normalized = 0;
@@ -102,23 +104,34 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion)
       normalized = 255;
 
     img[i] = (unsigned char)normalized;
-    if (img[i] > 170)
+    if (img[i] < 170)
       count_ridges++;
   }
 
   *dark_portion = (double)count_ridges / EGIS0576_IMG_SIZE;
 }
 
-static void upscale2x(guchar *src_img, guchar *dst_img)
+/*
+ * As it is already known, libfprint absolutely sucks at processing small images.
+ * Therefore the 'trick' is to create a canvas that is big enough to be liked by libfprint,
+ * fill it with 255 (white background) and put the sensor image in its original size into the
+ * center of that canvas.
+ */
+static void pad_img_to_canvas(guchar *img, guchar *canvas)
 {
-  for (int y = 0; y < EGIS0576_IMG_HEIGHT_2X; y++)
-  {
-    int src_y = y / 2;
+  memset(canvas, 255, EGIS0576_CANVAS_SIZE);
 
-    for (int x = 0; x < EGIS0576_IMG_WIDTH_2X; x++)
+  int offset_x = (EGIS0576_CANVAS_WIDTH - EGIS0576_IMG_WIDTH) / 2;
+  int offset_y = (EGIS0576_CANVAS_HEIGHT - EGIS0576_IMG_HEIGHT) / 2;
+
+  for (int y = 0; y < EGIS0576_IMG_HEIGHT; y++)
+  {
+    for (int x = 0; x < EGIS0576_IMG_WIDTH; x++)
     {
-      int src_x = x / 2;
-      dst_img[y * EGIS0576_IMG_WIDTH_2X + x] = src_img[src_y * EGIS0576_IMG_WIDTH + src_x];
+      int dest_y = y + offset_y;
+      int dest_x = x + offset_x;
+
+      canvas[dest_y * EGIS0576_CANVAS_WIDTH + dest_x] = img[y * EGIS0576_IMG_WIDTH + x];
     }
   }
 }
@@ -130,38 +143,41 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer)
 
   guchar *img = transfer->buffer;
 
-  gint sd_dev_sq = fpi_std_sq_dev(img, EGIS0576_IMG_SIZE);
+  gint variance = fpi_std_sq_dev(img, EGIS0576_IMG_SIZE);
   if (!self->has_background)
   {
     /* Background has been gathered, user can put finger on sensor. */
-    if (sd_dev_sq < EGIS0576_BG_SD_DEV * EGIS0576_BG_SD_DEV)
+    if (variance < EGIS0576_BG_VARIANCE)
     {
       memcpy(self->background, img, EGIS0576_IMG_SIZE);
       self->has_background = TRUE;
 
+      fpi_device_report_finger_status(dev, FP_FINGER_STATUS_NEEDED);
+
       self->seq_type = SEQ_REPEAT;
       fpi_ssm_next_state_delayed(transfer->ssm, 50);
-
-      fpi_device_report_finger_status(dev, FP_FINGER_STATUS_NEEDED);
       return;
     }
 
     /* User should remove finger so the driver can grab a clear image. */
     fpi_image_device_retry_scan(img_self, FP_DEVICE_RETRY_REMOVE_FINGER);
+
+    self->seq_type = SEQ_REPEAT;
+    fpi_ssm_next_state_delayed(transfer->ssm, 500);
     return;
   }
 
   gboolean finger_present = FALSE;
   double dark_portion = -1;
-  if (sd_dev_sq > EGIS0576_SD_DEV * EGIS0576_SD_DEV)
+  if (variance > EGIS0576_VARIANCE)
   {
     normalize_img(self->background, img, &dark_portion);
     finger_present = dark_portion > EGIS0576_DARK_PORTION;
   }
 
-  fp_dbg("Finger status (present, sd dev sq, dark port) : "
+  fp_dbg("Finger status (present, variance, dark port) : "
          "%d , %d, %.2f",
-         finger_present, sd_dev_sq, dark_portion);
+         finger_present, variance, dark_portion);
 
   if (!finger_present)
   {
@@ -171,15 +187,12 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer)
     return;
   }
 
-  FpImage *fpImg = fp_image_new(EGIS0576_IMG_WIDTH_2X, EGIS0576_IMG_HEIGHT_2X);
-
+  FpImage *fp_img = fp_image_new(EGIS0576_CANVAS_WIDTH, EGIS0576_CANVAS_HEIGHT);
   /* Sensor returns full image */
-  // memcpy(fpImg->data, img, EGIS0576_IMG_SIZE);
-
-  upscale2x(img, fpImg->data);
+  pad_img_to_canvas(img, fp_img->data);
 
   fpi_image_device_report_finger_status(img_self, TRUE);
-  fpi_image_device_image_captured(img_self, fpImg);
+  fpi_image_device_image_captured(img_self, fp_img);
 
   fpi_ssm_next_state_delayed(transfer->ssm, 50);
 }
@@ -526,15 +539,15 @@ static void fpi_device_egis0576_class_init(FpDeviceEgis0576Class *klass)
   dev_class->type = FP_DEVICE_TYPE_USB;
   dev_class->id_table = id_table;
   dev_class->scan_type = FP_SCAN_TYPE_PRESS;
-  dev_class->nr_enroll_stages = 5;
+  dev_class->nr_enroll_stages = 15;
 
   img_class->img_open = dev_init;
   img_class->img_close = dev_deinit;
   img_class->activate = dev_activate;
   img_class->deactivate = dev_deactivate;
 
-  img_class->img_width = EGIS0576_IMG_WIDTH_2X;
-  img_class->img_height = EGIS0576_IMG_HEIGHT_2X;
+  img_class->img_width = EGIS0576_CANVAS_WIDTH;
+  img_class->img_height = EGIS0576_CANVAS_HEIGHT;
 
-  // img_class->bz3_threshold = 10; /* security issue */
+  img_class->bz3_threshold = 10; /* security issue */
 }

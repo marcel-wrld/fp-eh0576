@@ -28,20 +28,24 @@
 #define EGIS0576_TIMEOUT    10000
 #define EGIS0576_POLL_COUNT 3000
 
-/* Image */
-#define EGIS0576_IMG_WIDTH     70
-#define EGIS0576_IMG_HEIGHT    57
-#define EGIS0576_IMG_SIZE      ((EGIS0576_IMG_WIDTH) * (EGIS0576_IMG_HEIGHT))
-#define EGIS0576_IMG_WIDTH_2X  ((EGIS0576_IMG_WIDTH) * 2)
-#define EGIS0576_IMG_HEIGHT_2X ((EGIS0576_IMG_HEIGHT) * 2)
+/* Sensor image*/
+#define EGIS0576_IMG_WIDTH  70
+#define EGIS0576_IMG_HEIGHT 57
+#define EGIS0576_IMG_SIZE   ((EGIS0576_IMG_WIDTH) * (EGIS0576_IMG_HEIGHT))
+
+/* Canvas image */
+#define EGIS0576_CANVAS_WIDTH  256
+#define EGIS0576_CANVAS_HEIGHT 256
+#define EGIS0576_CANVAS_SIZE   ((EGIS0576_CANVAS_WIDTH) * (EGIS0576_CANVAS_HEIGHT))
 
 /*
  * These values were acquired by testing with finger present and without finger
- * present. For that the standard deviation must be greater than this.
+ * present.
  */
-#define EGIS0576_SD_DEV       3.5   // Sd. dev. considered finger present
-#define EGIS0576_DARK_PORTION 0.05  // Dark port. considered finger present
-#define EGIS0576_BG_SD_DEV    2.75  // Sd. dev. considered background
+#define EGIS0576_CONTRAST     4
+#define EGIS0576_VARIANCE     (3.5 * 3.5)
+#define EGIS0576_DARK_PORTION 0.05
+#define EGIS0576_BG_VARIANCE  (2.75 * 2.75)
 
 /*
  *

@@ -12,17 +12,15 @@
 #define POLL_COUNT 3000  // Based on Ghidra
 
 // Image values
-#define IMG_WIDTH     70
-#define IMG_HEIGHT    57
-#define IMG_SIZE      ((IMG_WIDTH) * (IMG_HEIGHT))
-#define IMG_WIDTH_2X  ((IMG_WIDTH) * 2)
-#define IMG_HEIGHT_2X ((IMG_HEIGHT) * 2)
-#define IMG_SIZE_2X   ((IMG_WIDTH_2X) * (IMG_HEIGHT_2X))  // *4, (2x as in upscaled by a factor of 2)
+#define IMG_WIDTH  70
+#define IMG_HEIGHT 57
+#define IMG_SIZE   ((IMG_WIDTH) * (IMG_HEIGHT))
 
 // This values were acquired by testing with finger present and without finger present
-#define IMGP_SD_DEV       3.5   // 1. finger present? Standard dev. > this value
-#define IMGP_DARK_PORTION 0.05  // 2. finger present? Portion of dark pixels > this value
-#define IMGP_BG_SD_DEV    2.75  // Variance considered background
+#define IMGP_CONTRAST     4
+#define IMGP_VARIANCE     (3.5 * 3.5)
+#define IMGP_DARK_PORTION 0.05
+#define IMGP_BG_VARIANCE  (2.75 * 2.75)
 
 // All packets work like this:
 // E     G     I     S
@@ -79,11 +77,9 @@ int send_egis_pkt(Pkt pkt, unsigned char *resp_buf, int *rcvd);
 int send_egis_pkt_raw(unsigned char *seg_buf, const int seg_len, unsigned char *resp_buf,
                       const int resp_len, int *rcvd);
 
-double get_sd_dev_sq(unsigned char *img);
+double get_variance(unsigned char *img);
 
 void normalize_img(unsigned char *bg, unsigned char *img, double *dark_portion);
-
-void upscale_2x(unsigned char *src_img, unsigned char *dst_img);
 
 static const Pkt EGIS0576_POLL_PACKET
   = { .len = 7,

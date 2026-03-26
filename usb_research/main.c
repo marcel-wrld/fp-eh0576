@@ -9,7 +9,6 @@
 bool have_bg = false;
 unsigned char bg[IMG_SIZE] = { 0 };
 unsigned char img[IMG_SIZE] = { 0 };
-unsigned char img_upscaled[IMG_SIZE_2X] = { 0 };
 
 int __status;
 
@@ -33,12 +32,23 @@ int save_image()
   return LIBUSB_SUCCESS;
 }
 
+void write_image_to_disk()
+{
+  printf("Saving raw image to file...\n");
+  FILE *fp_raw = fopen("output_raw.bin", "wb");
+  if (!fp_raw)
+    return;
+
+  fwrite(img, sizeof(unsigned char), IMG_SIZE, fp_raw);
+  printf("Saved raw image.\n");
+}
+
 int verify_image()
 {
-  double sd_dev_sq = get_sd_dev_sq(img);
+  double variance = get_variance(img);
   if (!have_bg)
   {
-    if (sd_dev_sq < IMGP_BG_SD_DEV * IMGP_BG_SD_DEV)
+    if (variance < IMGP_BG_VARIANCE)
     {
       memcpy(bg, img, IMG_SIZE);
       have_bg = true;
@@ -47,7 +57,7 @@ int verify_image()
   }
   else
   {
-    if (sd_dev_sq > IMGP_SD_DEV * IMGP_SD_DEV)
+    if (variance > IMGP_VARIANCE)
     {
       double dark_portion;
       normalize_img(bg, img, &dark_portion);
@@ -57,24 +67,7 @@ int verify_image()
 
       if (finger_present)
       {
-        printf("Saving raw image to file...\n");
-        FILE *fp_raw = fopen("output_raw.bin", "wb");
-        if (fp_raw)
-        {
-          fwrite(img, sizeof(unsigned char), IMG_SIZE, fp_raw);
-          printf("Saved raw image.\n");
-        }
-
-        upscale_2x(img, img_upscaled);
-
-        printf("Saving upscaled image to file...\n");
-        FILE *fp_upscaled = fopen("output_upscaled.bin", "wb");
-        if (fp_upscaled)
-        {
-          fwrite(img_upscaled, sizeof(unsigned char), IMG_SIZE_2X, fp_upscaled);
-          printf("Saved upscaled image.\n");
-        }
-
+        write_image_to_disk();
         return LIBUSB_SUCCESS;
       }
     }
@@ -101,6 +94,9 @@ int main()
 
     if ((__status = save_image()) != LIBUSB_SUCCESS)
       goto CLEANUP;
+
+    // write_image_to_disk();
+    // break;
 
     if ((__status = verify_image()) == LIBUSB_SUCCESS)
       break;
