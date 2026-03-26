@@ -9,7 +9,7 @@ Initial tests proved that the **EH0575** and the **EH0576** (likely the successo
 
 ## Work
 
-I was unable to get the fingerprint reader to work in a VM (both Win10 and Win11) and Wireshark USBcap does not allow to be run on Windows-To-Go.
+I was unable to get the fingerprint reader to work in a VM (both Win10 and Win11) and Wireshark USBcap does not allow to be run on Windows-To-Go so I could not use any USB captures from Windows.
 
 Therefore, the rest of the reverse engineering was solely done with static analysis in **Ghidra** of the `EgisTouchFP0576.dll` UMDF driver provided by [Lenovo](https://pcsupport.lenovo.com/de/en/products/laptops-and-netbooks/flex-series/flex-5-14alc7/downloads/driver-list/component?name=Fingerprint%20Reader&id=A4F7592E-3C73-4CCF-ABB9-09549219DFC8). I am no professional "hacker" by any means so I cannot guarantee that this project is 100% correct.
 
