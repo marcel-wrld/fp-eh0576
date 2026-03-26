@@ -7,8 +7,9 @@
 #include "eh0576.h"
 
 bool have_bg = false;
-unsigned char bg[8192] = { 0 };
-unsigned char img[8192] = { 0 };
+unsigned char bg[IMG_SIZE] = { 0 };
+unsigned char img[IMG_SIZE] = { 0 };
+unsigned char img_upscaled[IMG_SIZE_2X] = { 0 };
 
 int __status;
 
@@ -34,25 +35,7 @@ int save_image()
 
 int verify_image()
 {
-  uint sum = 0;
-  for (int i = 0; i < IMG_SIZE; i++)
-  {
-    sum += (uint)img[i];
-  }
-
-  // No data was present
-  if (sum == 0)
-    return -1;
-
-  int mean = sum / IMG_SIZE;
-  double sd = 0;
-  for (int i = 0; i < IMG_SIZE; i++)
-  {
-    int diff = (uint)img[i] - mean;
-    sd += diff * diff;
-  }
-
-  double sd_dev_sq = sd / IMG_SIZE;
+  double sd_dev_sq = get_sd_dev_sq(img);
   if (!have_bg)
   {
     if (sd_dev_sq < IMGP_BG_SD_DEV * IMGP_BG_SD_DEV)
@@ -66,50 +49,30 @@ int verify_image()
   {
     if (sd_dev_sq > IMGP_SD_DEV * IMGP_SD_DEV)
     {
-      int diff[IMG_SIZE];
-      int min = 255;
-      int max = 0;
+      double dark_portion;
+      normalize_img(bg, img, &dark_portion);
 
-      for (int i = 0; i < IMG_SIZE; i++)
-      {
-        diff[i] = (int)bg[i] - (int)img[i];
-        if (diff[i] < min)
-          min = diff[i];
-        if (diff[i] > max)
-          max = diff[i];
-      }
-
-      int range = max - min;
-      if (range == 0)
-        range = 1;
-
-      int count_ridges = 0;
-      for (int i = 0; i < IMG_SIZE; i++)
-      {
-        int normalized = ((diff[i] - min) * 255) / range;
-
-        if (normalized < 0)
-          normalized = 0;
-        else if (normalized > 255)
-          normalized = 255;
-
-        img[i] = (unsigned char)normalized;
-        if (img[i] < 150)
-          count_ridges++;
-      }
-
-      double dark_portion = (double)count_ridges / IMG_SIZE;
       bool finger_present = dark_portion > IMGP_DARK_PORTION;
       printf(">> IMAGE: %d (%.2f)\n", finger_present, dark_portion);
 
       if (finger_present)
       {
-        printf("Saving image to file...\n");
-        FILE *fp = fopen("output.bin", "wb");
-        if (fp)
+        printf("Saving raw image to file...\n");
+        FILE *fp_raw = fopen("output_raw.bin", "wb");
+        if (fp_raw)
         {
-          fwrite(img, sizeof(unsigned char), IMG_SIZE, fp);
-          printf("Saved.\n");
+          fwrite(img, sizeof(unsigned char), IMG_SIZE, fp_raw);
+          printf("Saved raw image.\n");
+        }
+
+        upscale2x_bilinear_img(img, img_upscaled);
+
+        printf("Saving upscaled image to file...\n");
+        FILE *fp_upscaled = fopen("output_upscaled.bin", "wb");
+        if (fp_upscaled)
+        {
+          fwrite(img_upscaled, sizeof(unsigned char), IMG_SIZE_2X, fp_upscaled);
+          printf("Saved upscaled image.\n");
         }
 
         return LIBUSB_SUCCESS;
