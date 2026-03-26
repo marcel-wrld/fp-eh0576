@@ -111,27 +111,75 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion)
   *dark_portion = (double)count_ridges / EGIS0576_IMG_SIZE;
 }
 
+/* Uses bilinear interpolation */
+static void upscale_img(guchar *src_img, guchar *dst_img)
+{
+  const int scale = EGIS0576_IMG_UPSCALE;
+  const int src_w = EGIS0576_IMG_WIDTH;
+  const int src_h = EGIS0576_IMG_HEIGHT;
+  const int dst_w = EGIS0576_IMG_WIDTH_UPSCALE;
+  const int dst_h = EGIS0576_IMG_HEIGHT_UPSCALE;
+
+  for (int y = 0; y < dst_h; y++)
+  {
+    float gy = ((float)y) / scale;
+    int y1 = (int)gy;
+    int y2 = (y1 >= src_h - 1) ? src_h - 1 : y1 + 1;
+    float ty = gy - y1;
+
+    for (int x = 0; x < dst_w; x++)
+    {
+      float gx = ((float)x) / scale;
+      int x1 = (int)gx;
+      int x2 = (x1 >= src_w - 1) ? src_w - 1 : x1 + 1;
+      float tx = gx - x1;
+
+      float p00 = src_img[y1 * src_w + x1];  // Top left
+      float p10 = src_img[y1 * src_w + x2];  // Top right
+      float p01 = src_img[y2 * src_w + x1];  // Bottom left
+      float p11 = src_img[y2 * src_w + x2];  // Bottom right
+
+      // Interp. horizontally across the top and bottom
+      float top_p = p00 * (1.0f - tx) + p10 * tx;
+      float bottom_p = p01 * (1.0f - tx) + p11 * tx;
+
+      // Interp. vertically between the two horizontal results
+      float pixel = top_p * (1.0f - ty) + bottom_p * ty;
+
+      dst_img[y * dst_w + x] = (guchar)pixel;
+    }
+  }
+}
+
 /*
  * As it is already known, libfprint absolutely sucks at processing small images.
  * Therefore the 'trick' is to create a canvas that is big enough to be liked by libfprint,
- * fill it with 255 (white background) and put the sensor image in its original size into the
+ * fill it with 255 (white background) and put an upscaled version of the sensor image into the
  * center of that canvas.
+ * With this technique I have managed to get scores as high as 32!
  */
-static void pad_img_to_canvas(guchar *img, guchar *canvas)
+static void upscale_and_pad_img(guchar *img, guchar *canvas)
 {
+  const int img_width = EGIS0576_IMG_WIDTH_UPSCALE;
+  const int img_height = EGIS0576_IMG_HEIGHT_UPSCALE;
+
+  // Upscale sensor image
+  guchar upscaled_img[EGIS0576_IMG_SIZE_UPSCALE];
+  upscale_img(img, upscaled_img);
+
+  // Prepare canvas
   memset(canvas, 255, EGIS0576_CANVAS_SIZE);
+  int offset_x = (EGIS0576_CANVAS_WIDTH - img_width) / 2;
+  int offset_y = (EGIS0576_CANVAS_HEIGHT - img_height) / 2;
 
-  int offset_x = (EGIS0576_CANVAS_WIDTH - EGIS0576_IMG_WIDTH) / 2;
-  int offset_y = (EGIS0576_CANVAS_HEIGHT - EGIS0576_IMG_HEIGHT) / 2;
-
-  for (int y = 0; y < EGIS0576_IMG_HEIGHT; y++)
+  for (int y = 0; y < img_height; y++)
   {
-    for (int x = 0; x < EGIS0576_IMG_WIDTH; x++)
+    for (int x = 0; x < img_width; x++)
     {
       int dest_y = y + offset_y;
       int dest_x = x + offset_x;
 
-      canvas[dest_y * EGIS0576_CANVAS_WIDTH + dest_x] = img[y * EGIS0576_IMG_WIDTH + x];
+      canvas[dest_y * EGIS0576_CANVAS_WIDTH + dest_x] = upscaled_img[y * img_width + x];
     }
   }
 }
@@ -189,7 +237,7 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer)
 
   FpImage *fp_img = fp_image_new(EGIS0576_CANVAS_WIDTH, EGIS0576_CANVAS_HEIGHT);
   /* Sensor returns full image */
-  pad_img_to_canvas(img, fp_img->data);
+  upscale_and_pad_img(img, fp_img->data);
 
   fpi_image_device_report_finger_status(img_self, TRUE);
   fpi_image_device_image_captured(img_self, fp_img);
@@ -549,5 +597,5 @@ static void fpi_device_egis0576_class_init(FpDeviceEgis0576Class *klass)
   img_class->img_width = EGIS0576_CANVAS_WIDTH;
   img_class->img_height = EGIS0576_CANVAS_HEIGHT;
 
-  img_class->bz3_threshold = 10; /* security issue */
+  img_class->bz3_threshold = 10; /* security issue, can score more but not reliably */
 }
