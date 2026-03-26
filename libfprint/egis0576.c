@@ -43,9 +43,6 @@ enum sm_states
   NUM_STATES
 };
 
-/* Image process results */
-#define INVALID_BUFFER -1
-
 /* Struct */
 struct _FpDeviceEgis0576
 {
@@ -278,11 +275,7 @@ static void process_poll_transfer(FpDevice *dev, FpiUsbTransfer *transfer)
   g_error_free(error);
 }
 
-/*
- * Returns PIMG_INVALID_DATA if the transfer buffer was invalid (e.g. all
- * zeros).
- * Else it will return 0 if no finger is present or 1 if a finger is present.
- */
+/* Verifies that received data is processable. */
 static void process_image_transfer(FpDevice *dev, FpiUsbTransfer *transfer)
 {
   guchar *buffer = transfer->buffer;
@@ -587,7 +580,8 @@ static void fpi_device_egis0576_class_init(FpDeviceEgis0576Class *klass)
   dev_class->type = FP_DEVICE_TYPE_USB;
   dev_class->id_table = id_table;
   dev_class->scan_type = FP_SCAN_TYPE_PRESS;
-  dev_class->nr_enroll_stages = 15;
+  dev_class->nr_enroll_stages = 20;
+  dev_class->temp_hot_seconds = 0;
 
   img_class->img_open = dev_init;
   img_class->img_close = dev_deinit;
