@@ -2,6 +2,9 @@
 
 After installing Linux on my [IdeaPad Flex 5 14ALC7 Laptop](https://pcsupport.lenovo.com/de/en/products/laptops-and-netbooks/flex-series/flex-5-14alc7/) the fingerprint reader did not work anymore because there was no driver for the **EH0576** (`1c7a:0576`) fingerprint reader.
 
+### WIP
+Currently the verification example of `libfprint` always returns a **0 match score** against a before-hand enrolled fingerprint. I have yet to figure out why...
+
 ## Thank You
 
 Huge credit goes to [Animeshz](https://github.com/Animeshz)'s efforts [on github](https://github.com/Animeshz/EgisTec-EH575) and [on `libfprint`](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/317) as those laid the base for this effort.
