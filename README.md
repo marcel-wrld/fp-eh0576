@@ -4,7 +4,7 @@ After installing Linux on my [IdeaPad Flex 5 14ALC7 Laptop](https://pcsupport.le
 
 ## Thank You
 
-Huge credit goes to [Animeshz](https://github.com/Animeshz) as they laid the base for this effort in a [merge request](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/317) of [`libfprint`](https://gitlab.freedesktop.org/libfprint/libfprint).
+Huge credit goes to [Animeshz](https://github.com/Animeshz)'s efforts [on github](https://github.com/Animeshz/EgisTec-EH575) and [on `libfprint`](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/317) as those laid the base for this effort.
 Initial tests proved that the **EH0575** and the **EH0576** (likely the successor) seem to work basically the same as by just providing the **EH0575** packets I was able to occasionally get little data out of mine.
 
 ## Work
