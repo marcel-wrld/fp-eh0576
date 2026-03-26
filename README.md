@@ -9,7 +9,7 @@ Currently the driver still has a fair amount of false rejection rates but it wor
 Contains the **Ghidra** project files where I renamed some functions and variables of the `EgisTouchFP0576.dll` as good as I could.
 You can get the `.dll` driver files from the Lenovo download page down below.
 - `libfprint/`:
-Contains the driver files for integration into `libfprint`. I have yet to create a patch for it.
+Contains the driver files for integration into `libfprint`. I have already created a [merge request](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/571).
 - `usb_research/`:
 Contains the **CMake** project I used for reverse engineering and testing efforts before I went on to write the `libfprint` driver.
 
