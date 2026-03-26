@@ -8,7 +8,7 @@ Currently the verification example of `libfprint` always returns a **0 match sco
 ## Thank You
 
 Huge credit goes to [Animeshz](https://github.com/Animeshz)'s efforts [on github](https://github.com/Animeshz/EgisTec-EH575) and [on `libfprint`](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/317) as those laid the base for this effort.
-Initial tests proved that the **EH0575** and the **EH0576** (likely the successor) seem to work basically the same as by just providing the **EH0575** packets I was able to occasionally get little data out of mine.
+Initial tests proved that the **EH0575** and the **EH0576** seem to work similar as by just providing the **EH0575** packets I was able to occasionally get little data out of mine even though the **EH0576** is not a swipe sensor.
 
 ## Work
 

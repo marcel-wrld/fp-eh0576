@@ -20,13 +20,21 @@
 #define FP_COMPONENT "egis0576"
 
 #include "egis0576.h"
+
 #include "drivers_api.h"
 
 /* Sequence types */
-typedef enum { SEQ_INIT, SEQ_REPEAT, SEQ_POLL, SEQ_IMAGE } seq_types;
+typedef enum
+{
+  SEQ_INIT,
+  SEQ_REPEAT,
+  SEQ_POLL,
+  SEQ_IMAGE
+} seq_types;
 
 /* SSM States */
-enum sm_states {
+enum sm_states
+{
   DEV_OPEN,
   DEV_START,
   DEV_REQ,
@@ -39,7 +47,8 @@ enum sm_states {
 #define INVALID_BUFFER -1
 
 /* Struct */
-struct _FpDeviceEgis0576 {
+struct _FpDeviceEgis0576
+{
   FpImageDevice parent;
 
   gboolean running;
@@ -52,8 +61,7 @@ struct _FpDeviceEgis0576 {
   int seq_pkt_index;
   Egis0576Pkt last_sent_pkt;
 };
-G_DECLARE_FINAL_TYPE(FpDeviceEgis0576, fpi_device_egis0576, FPI,
-                     DEVICE_EGIS0576, FpImageDevice);
+G_DECLARE_FINAL_TYPE(FpDeviceEgis0576, fpi_device_egis0576, FPI, DEVICE_EGIS0576, FpImageDevice);
 G_DEFINE_TYPE(FpDeviceEgis0576, fpi_device_egis0576, FP_TYPE_IMAGE_DEVICE);
 
 /*
@@ -63,12 +71,14 @@ G_DEFINE_TYPE(FpDeviceEgis0576, fpi_device_egis0576, FP_TYPE_IMAGE_DEVICE);
  */
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
-static void normalize_img(guchar *bg, guchar *img, double *dark_portion) {
+static void normalize_img(guchar *bg, guchar *img, double *dark_portion)
+{
   // Find diffs, min and max
   int diff[EGIS0576_IMG_SIZE];
   int min = 255;
   int max = 0;
-  for (int i = 0; i < EGIS0576_IMG_SIZE; i++) {
+  for (int i = 0; i < EGIS0576_IMG_SIZE; i++)
+  {
     diff[i] = (int)img[i] - (int)bg[i];
     if (diff[i] < min)
       min = diff[i];
@@ -78,11 +88,12 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion) {
 
   int range = max - min;
   if (range == 0)
-    range = 1; // Prevent division by zero
+    range = 1;  // Prevent division by zero
 
   // Adjust contrast / normalize
   int count_ridges = 0;
-  for (int i = 0; i < EGIS0576_IMG_SIZE; i++) {
+  for (int i = 0; i < EGIS0576_IMG_SIZE; i++)
+  {
     int normalized = 255 - (((diff[i] - min) * 255) / range);
 
     if (normalized < 0)
@@ -98,28 +109,33 @@ static void normalize_img(guchar *bg, guchar *img, double *dark_portion) {
   *dark_portion = (double)count_ridges / EGIS0576_IMG_SIZE;
 }
 
-static void upscale2x(guchar *src_img, guchar *dst_img) {
-  for (int y = 0; y < EGIS0576_IMG_HEIGHT_2X; y++) {
+static void upscale2x(guchar *src_img, guchar *dst_img)
+{
+  for (int y = 0; y < EGIS0576_IMG_HEIGHT_2X; y++)
+  {
     int src_y = y / 2;
 
-    for (int x = 0; x < EGIS0576_IMG_WIDTH_2X; x++) {
+    for (int x = 0; x < EGIS0576_IMG_WIDTH_2X; x++)
+    {
       int src_x = x / 2;
-      dst_img[y * EGIS0576_IMG_WIDTH_2X + x] =
-          src_img[src_y * EGIS0576_IMG_WIDTH + src_x];
+      dst_img[y * EGIS0576_IMG_WIDTH_2X + x] = src_img[src_y * EGIS0576_IMG_WIDTH + src_x];
     }
   }
 }
 
-static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer) {
+static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer)
+{
   FpImageDevice *img_self = FP_IMAGE_DEVICE(dev);
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
   guchar *img = transfer->buffer;
 
   gint sd_dev_sq = fpi_std_sq_dev(img, EGIS0576_IMG_SIZE);
-  if (!self->has_background) {
+  if (!self->has_background)
+  {
     /* Background has been gathered, user can put finger on sensor. */
-    if (sd_dev_sq < EGIS0576_BG_SD_DEV * EGIS0576_BG_SD_DEV) {
+    if (sd_dev_sq < EGIS0576_BG_SD_DEV * EGIS0576_BG_SD_DEV)
+    {
       memcpy(self->background, img, EGIS0576_IMG_SIZE);
       self->has_background = TRUE;
 
@@ -137,7 +153,8 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer) {
 
   gboolean finger_present = FALSE;
   double dark_portion = -1;
-  if (sd_dev_sq > EGIS0576_SD_DEV * EGIS0576_SD_DEV) {
+  if (sd_dev_sq > EGIS0576_SD_DEV * EGIS0576_SD_DEV)
+  {
     normalize_img(self->background, img, &dark_portion);
     finger_present = dark_portion > EGIS0576_DARK_PORTION;
   }
@@ -146,7 +163,8 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer) {
          "%d , %d, %.2f",
          finger_present, sd_dev_sq, dark_portion);
 
-  if (!finger_present) {
+  if (!finger_present)
+  {
     self->seq_type = SEQ_REPEAT;
     fpi_image_device_report_finger_status(img_self, FALSE);
     fpi_ssm_next_state_delayed(transfer->ssm, 50);
@@ -166,31 +184,35 @@ static void process_finger(FpDevice *dev, FpiUsbTransfer *transfer) {
   fpi_ssm_next_state_delayed(transfer->ssm, 50);
 }
 
-static void process_poll_transfer(FpDevice *dev, FpiUsbTransfer *transfer) {
+static void process_poll_transfer(FpDevice *dev, FpiUsbTransfer *transfer)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
-  if (transfer->actual_length < 6) {
-    GError *error = fpi_device_error_new_msg(FP_DEVICE_ERROR_DATA_INVALID,
-                                             "Device reported invalid poll.");
+  if (transfer->actual_length < 6)
+  {
+    GError *error
+      = fpi_device_error_new_msg(FP_DEVICE_ERROR_DATA_INVALID, "Device reported invalid poll.");
     fpi_ssm_mark_failed(transfer->ssm, error);
     g_error_free(error);
     return;
   }
 
-  if ((transfer->buffer[6] & 0x01) == 0x01) {
+  if ((transfer->buffer[6] & 0x01) == 0x01)
+  {
     self->seq_type = SEQ_IMAGE;
     fpi_ssm_jump_to_state(transfer->ssm, DEV_REQ);
     return;
   }
 
   self->seq_pkt_index += 1;
-  if (self->seq_pkt_index < EGIS0576_POLL_COUNT) {
+  if (self->seq_pkt_index < EGIS0576_POLL_COUNT)
+  {
     fpi_ssm_jump_to_state(transfer->ssm, DEV_REQ);
     return;
   }
 
-  GError *error = fpi_device_error_new_msg(
-      FP_DEVICE_ERROR_GENERAL, "Device exceeded maximum poll count.");
+  GError *error
+    = fpi_device_error_new_msg(FP_DEVICE_ERROR_GENERAL, "Device exceeded maximum poll count.");
   fpi_ssm_mark_failed(transfer->ssm, error);
   g_error_free(error);
 }
@@ -200,14 +222,15 @@ static void process_poll_transfer(FpDevice *dev, FpiUsbTransfer *transfer) {
  * zeros).
  * Else it will return 0 if no finger is present or 1 if a finger is present.
  */
-static void process_image_transfer(FpDevice *dev, FpiUsbTransfer *transfer) {
+static void process_image_transfer(FpDevice *dev, FpiUsbTransfer *transfer)
+{
   guchar *buffer = transfer->buffer;
   gssize buffer_len = transfer->actual_length;
 
-  if (buffer_len != EGIS0576_IMG_SIZE) {
+  if (buffer_len != EGIS0576_IMG_SIZE)
+  {
     GError *error = fpi_device_error_new_msg(
-        FP_DEVICE_ERROR_DATA_INVALID,
-        "Device image data size does not match expected size.");
+      FP_DEVICE_ERROR_DATA_INVALID, "Device image data size does not match expected size.");
     fpi_ssm_mark_failed(transfer->ssm, error);
     g_error_free(error);
     return;
@@ -215,14 +238,16 @@ static void process_image_transfer(FpDevice *dev, FpiUsbTransfer *transfer) {
 
   uint sum = 0;
   /* Roughly check whether the buffer is empty aka invalid. */
-  for (int i = 0; i < MIN(buffer_len, 255); i++) {
+  for (int i = 0; i < MIN(buffer_len, 255); i++)
+  {
     sum += buffer[i];
   }
 
   /* No/invalid data was present. */
-  if (sum == 0) {
-    GError *error = fpi_device_error_new_msg(FP_DEVICE_ERROR_DATA_INVALID,
-                                             "Device reported invalid data.");
+  if (sum == 0)
+  {
+    GError *error
+      = fpi_device_error_new_msg(FP_DEVICE_ERROR_DATA_INVALID, "Device reported invalid data.");
     fpi_ssm_mark_failed(transfer->ssm, error);
     g_error_free(error);
     return;
@@ -236,18 +261,20 @@ static void process_image_transfer(FpDevice *dev, FpiUsbTransfer *transfer) {
  * I / O
  * ========================
  */
-static void cmd_resp_cb(FpiUsbTransfer *transfer, FpDevice *dev,
-                        gpointer user_data, GError *error) {
+static void cmd_resp_cb(FpiUsbTransfer *transfer, FpDevice *dev, gpointer user_data, GError *error)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
-  if (error) {
-    fp_dbg("During the %d sequence an error occurred at pkt index %d",
-           self->seq_type, self->seq_pkt_index);
+  if (error)
+  {
+    fp_dbg("During the %d sequence an error occurred at pkt index %d", self->seq_type,
+           self->seq_pkt_index);
     fpi_ssm_mark_failed(transfer->ssm, error);
     return;
   }
 
-  switch (self->seq_type) {
+  switch (self->seq_type)
+  {
   /* not processed */
   case SEQ_INIT:
   case SEQ_REPEAT:
@@ -264,7 +291,8 @@ static void cmd_resp_cb(FpiUsbTransfer *transfer, FpDevice *dev,
   }
 }
 
-static void recv_cmd_resp(FpiSsm *ssm, FpDevice *dev, Egis0576Pkt last_pkt) {
+static void recv_cmd_resp(FpiSsm *ssm, FpDevice *dev, Egis0576Pkt last_pkt)
+{
   FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
 
   fpi_usb_transfer_fill_bulk(transfer, EGIS0576_EPIN, last_pkt.res_len);
@@ -274,42 +302,47 @@ static void recv_cmd_resp(FpiSsm *ssm, FpDevice *dev, Egis0576Pkt last_pkt) {
   fpi_usb_transfer_submit(transfer, EGIS0576_TIMEOUT, NULL, cmd_resp_cb, NULL);
 }
 
-static void send_cmd_req(FpiSsm *ssm, FpDevice *dev, Egis0576Pkt pkt) {
+static void send_cmd_req(FpiSsm *ssm, FpDevice *dev, Egis0576Pkt pkt)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
   FpiUsbTransfer *transfer = fpi_usb_transfer_new(dev);
 
   self->last_sent_pkt = pkt;
-  fpi_usb_transfer_fill_bulk_full(transfer, EGIS0576_EPOUT, pkt.cmd, pkt.len,
-                                  NULL);
+  fpi_usb_transfer_fill_bulk_full(transfer, EGIS0576_EPOUT, pkt.cmd, pkt.len, NULL);
 
   transfer->ssm = ssm;
   transfer->short_is_error = TRUE;
 
-  fpi_usb_transfer_submit(transfer, EGIS0576_TIMEOUT, NULL,
-                          fpi_ssm_usb_transfer_cb, NULL);
+  fpi_usb_transfer_submit(transfer, EGIS0576_TIMEOUT, NULL, fpi_ssm_usb_transfer_cb, NULL);
 }
 
-static gboolean init_repeat_last_pkt(FpDevice *dev) {
+static gboolean init_repeat_last_pkt(FpDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
   int type = self->seq_type;
   int index = self->seq_pkt_index;
 
-  return (type == SEQ_INIT && index == EGIS0576_INIT_PACKETS_LENGTH - 1) ||
-         (type == SEQ_REPEAT && index == EGIS0576_REPEAT_PACKETS_LENGTH - 1);
+  return (type == SEQ_INIT && index == EGIS0576_INIT_PACKETS_LENGTH - 1)
+         || (type == SEQ_REPEAT && index == EGIS0576_REPEAT_PACKETS_LENGTH - 1);
 }
 
-static void recv_cmd(FpiSsm *ssm, FpDevice *dev) {
+static void recv_cmd(FpiSsm *ssm, FpDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
   Egis0576Pkt last_pkt = self->last_sent_pkt;
 
-  switch (self->seq_type) {
+  switch (self->seq_type)
+  {
   case SEQ_INIT:
   case SEQ_REPEAT:
-    if (!init_repeat_last_pkt(dev)) {
+    if (!init_repeat_last_pkt(dev))
+    {
       recv_cmd_resp(ssm, dev, last_pkt);
       self->seq_pkt_index += 1;
-    } else {
+    }
+    else
+    {
       self->seq_pkt_index = 0;
       self->seq_type = SEQ_POLL;
       fpi_ssm_jump_to_state(ssm, DEV_REQ);
@@ -324,10 +357,12 @@ static void recv_cmd(FpiSsm *ssm, FpDevice *dev) {
   }
 }
 
-static void send_cmd(FpiSsm *ssm, FpDevice *dev) {
+static void send_cmd(FpiSsm *ssm, FpDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
-  switch (self->seq_type) {
+  switch (self->seq_type)
+  {
   case SEQ_INIT:
     send_cmd_req(ssm, dev, EGIS0576_INIT_PACKETS[self->seq_pkt_index]);
     break;
@@ -346,17 +381,20 @@ static void send_cmd(FpiSsm *ssm, FpDevice *dev) {
   }
 }
 
-static void ssm_run_state(FpiSsm *ssm, FpDevice *dev) {
+static void ssm_run_state(FpiSsm *ssm, FpDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
-  switch (fpi_ssm_get_cur_state(ssm)) {
+  switch (fpi_ssm_get_cur_state(ssm))
+  {
   case DEV_OPEN:
     self->seq_type = SEQ_INIT;
     fpi_ssm_jump_to_state(ssm, DEV_START);
     break;
 
   case DEV_START:
-    if (self->stop) {
+    if (self->stop)
+    {
       fp_dbg("Deactivating device, marking completed.");
       fpi_ssm_mark_completed(ssm);
       return;
@@ -389,7 +427,8 @@ static void ssm_run_state(FpiSsm *ssm, FpDevice *dev) {
  * ========================
  */
 
-static void sm_cb(FpiSsm *ssm, FpDevice *dev, GError *error) {
+static void sm_cb(FpiSsm *ssm, FpDevice *dev, GError *error)
+{
   FpImageDevice *img_dev = FP_IMAGE_DEVICE(dev);
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
@@ -407,7 +446,8 @@ static void sm_cb(FpiSsm *ssm, FpDevice *dev, GError *error) {
 /*
  * Device activate
  */
-static void dev_activate(FpImageDevice *dev) {
+static void dev_activate(FpImageDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
   FpiSsm *ssm = fpi_ssm_new(FP_DEVICE(dev), ssm_run_state, NUM_STATES);
 
@@ -423,11 +463,11 @@ static void dev_activate(FpImageDevice *dev) {
 /*
  * Img open
  */
-static void dev_init(FpImageDevice *dev) {
+static void dev_init(FpImageDevice *dev)
+{
   GError *error = NULL;
 
-  g_usb_device_claim_interface(fpi_device_get_usb_device(FP_DEVICE(dev)),
-                               EGIS0576_INTF, 0, &error);
+  g_usb_device_claim_interface(fpi_device_get_usb_device(FP_DEVICE(dev)), EGIS0576_INTF, 0, &error);
 
   fpi_image_device_open_complete(dev, error);
 }
@@ -435,11 +475,12 @@ static void dev_init(FpImageDevice *dev) {
 /*
  * Img close
  */
-static void dev_deinit(FpImageDevice *dev) {
+static void dev_deinit(FpImageDevice *dev)
+{
   GError *error = NULL;
 
-  g_usb_device_release_interface(fpi_device_get_usb_device(FP_DEVICE(dev)),
-                                 EGIS0576_INTF, 0, &error);
+  g_usb_device_release_interface(fpi_device_get_usb_device(FP_DEVICE(dev)), EGIS0576_INTF, 0,
+                                 &error);
 
   fpi_image_device_close_complete(dev, error);
 }
@@ -447,7 +488,8 @@ static void dev_deinit(FpImageDevice *dev) {
 /*
  * Device deactivate
  */
-static void dev_deactivate(FpImageDevice *dev) {
+static void dev_deactivate(FpImageDevice *dev)
+{
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576(dev);
 
   if (self->running)
@@ -460,19 +502,22 @@ static void dev_deactivate(FpImageDevice *dev) {
  * Driver ID
  */
 static const FpIdEntry id_table[] = {
-    {
-        .vid = 0x1c7a,
-        .pid = 0x0576,
-    },
-    {
-        .vid = 0,
-        .pid = 0,
-    },
+  {
+    .vid = 0x1c7a,
+    .pid = 0x0576,
+  },
+  {
+    .vid = 0,
+    .pid = 0,
+  },
 };
 
-static void fpi_device_egis0576_init(FpDeviceEgis0576 *self) {}
+static void fpi_device_egis0576_init(FpDeviceEgis0576 *self)
+{
+}
 
-static void fpi_device_egis0576_class_init(FpDeviceEgis0576Class *klass) {
+static void fpi_device_egis0576_class_init(FpDeviceEgis0576Class *klass)
+{
   FpDeviceClass *dev_class = FP_DEVICE_CLASS(klass);
   FpImageDeviceClass *img_class = FP_IMAGE_DEVICE_CLASS(klass);
 
