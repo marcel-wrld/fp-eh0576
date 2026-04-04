@@ -600,5 +600,5 @@ fpi_device_egis0576_class_init (FpDeviceEgis0576Class *klass)
   img_class->img_width = EGIS0576_CANVAS_WIDTH;
   img_class->img_height = EGIS0576_CANVAS_HEIGHT;
 
-  img_class->bz3_threshold = 15; /* security issue, can score more but not reliably */
+  img_class->bz3_threshold = 10; /* security issue, can score more but not reliably */
 }
