@@ -95,20 +95,24 @@ normalize_img (guchar *bg, guchar *img, double *dark_portion)
     {
       int normalized = ((diff[i] - min) * 255) / range;
 
-      if (normalized < 0)
-        normalized = 0;
-      else if (normalized > 255)
-        normalized = 255;
+      if (normalized < EGIS0576_RIDGE)
+        {
+          if (normalized < EGIS0576_CLAMP0)
+            normalized = 0;
+          count_ridges++;
+        }
+      else if (normalized > EGIS0576_CLAMP255)
+        {
+          normalized = 255;
+        }
 
       img[i] = (unsigned char) normalized;
-      if (img[i] < 170)
-        count_ridges++;
     }
 
   *dark_portion = (double) count_ridges / EGIS0576_IMG_SIZE;
 }
 
-/* Uses bilinear interpolation */
+/* Uses nearest neighbor interpolation */
 static void
 upscale_img (guchar *src_img, guchar *dst_img)
 {
@@ -120,32 +124,18 @@ upscale_img (guchar *src_img, guchar *dst_img)
 
   for (int y = 0; y < dst_h; y++)
     {
-      float gy = ((float) y) / scale;
-      int y1 = (int) gy;
-      int y2 = (y1 >= src_h - 1) ? src_h - 1 : y1 + 1;
-      float ty = gy - y1;
+      int src_y = y / scale;
+      if (src_y >= src_h)
+        src_y = src_h - 1;
 
       for (int x = 0; x < dst_w; x++)
         {
-          float gx = ((float) x) / scale;
-          int x1 = (int) gx;
-          int x2 = (x1 >= src_w - 1) ? src_w - 1 : x1 + 1;
-          float tx = gx - x1;
+          int src_x = x / scale;
 
-          float p00 = src_img[y1 * src_w + x1]; // Top left
-          float p10 = src_img[y1 * src_w + x2]; // Top right
-          float p01 = src_img[y2 * src_w + x1]; // Bottom left
-          float p11 = src_img[y2 * src_w + x2]; // Bottom right
+          if (src_x >= src_w)
+            src_x = src_w - 1;
 
-          // Interp. horizontally across the top and bottom
-          float top_p = p00 * (1.0f - tx) + p10 * tx;
-          float bottom_p = p01 * (1.0f - tx) + p11 * tx;
-
-          // Interp. vertically between the two horizontal results
-          float pixel = top_p * (1.0f - ty) + bottom_p * ty;
-
-          // Round instead of floor, just better practice
-          dst_img[y * dst_w + x] = (guchar) (pixel + 0.5f);
+          dst_img[y * dst_w + x] = src_img[src_y * src_w + src_x];
         }
     }
 }
@@ -599,7 +589,7 @@ fpi_device_egis0576_class_init (FpDeviceEgis0576Class *klass)
   dev_class->type = FP_DEVICE_TYPE_USB;
   dev_class->id_table = id_table;
   dev_class->scan_type = FP_SCAN_TYPE_PRESS;
-  dev_class->nr_enroll_stages = 20;
+  dev_class->nr_enroll_stages = 40;
   dev_class->temp_hot_seconds = 0;
 
   img_class->img_open = dev_init;
@@ -610,5 +600,5 @@ fpi_device_egis0576_class_init (FpDeviceEgis0576Class *klass)
   img_class->img_width = EGIS0576_CANVAS_WIDTH;
   img_class->img_height = EGIS0576_CANVAS_HEIGHT;
 
-  img_class->bz3_threshold = 10; /* security issue, can score more but not reliably */
+  img_class->bz3_threshold = 15; /* security issue, can score more but not reliably */
 }
