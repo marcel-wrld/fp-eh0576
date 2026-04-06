@@ -242,7 +242,7 @@ process_poll_transfer (FpDevice *dev, FpiUsbTransfer *transfer)
 {
   FpDeviceEgis0576 *self = FPI_DEVICE_EGIS0576 (dev);
 
-  if (transfer->actual_length < 6)
+  if (transfer->actual_length < 7)
     {
       GError *error
         = fpi_device_error_new_msg (FP_DEVICE_ERROR_DATA_INVALID, "Device reported invalid poll.");
